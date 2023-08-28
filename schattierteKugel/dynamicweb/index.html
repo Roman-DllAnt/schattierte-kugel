@@ -1,0 +1,288 @@
+
+
+<html>
+    <head>
+        <script>
+            // Vars 
+            const v_start = [10,0,0];
+            let v_bright = v_start;
+            
+            let side;
+            
+            let picture_raw = "";
+            let picture_shaded = "";
+            
+            //allgemeine Functions 
+            function gibVBright(lr, ou) { // Winkel in rad/Bogenmaß
+                ou *= -1 // mehr ou dreht im urzeigersinn um die achse, also nach unten -> also umkehren 
+                let m_dreh = [[Math.cos(lr)*Math.cos(ou), -Math.sin(lr), Math.sin(ou)*Math.cos(lr)], [Math.sin(lr)*Math.cos(ou), Math.cos(lr), Math.sin(lr)*Math.sin(ou)], [-Math.sin(ou), 0, Math.cos(ou)]];
+                let v_temp = [];
+                for (i = 0; i < v_start.length; i++) {
+                    let val = 0;
+                    for (let j = 0; j < v_start.length; j++) {
+                        val += m_dreh[i][j]*v_start[j];
+                    }
+                    v_temp[i] = val;
+                }
+                v_bright = v_temp; 
+                return v_bright
+            }
+
+            function updateValues(andere_größe) {
+                if (andere_größe) {
+                    side = 2*(document.getElementById("side_slider").value) + 1;
+                    document.getElementById("display_side").innerHTML = side;
+                
+                    r = (side-1)/2;
+                }
+                else {
+                    let lr_deg = document.getElementById("lr_slider").value;
+                    document.getElementById("display_lr").innerHTML = lr_deg;
+
+                    let ou_deg = document.getElementById("ou_slider").value;
+                    document.getElementById("display_ou").innerHTML = ou_deg;
+
+                    let lr_rad = lr_deg / 180*Math.PI;
+                    let ou_rad = ou_deg / 180*Math.PI;
+                    
+                    v_bright = gibVBright(lr_rad, ou_rad)
+                }
+            }
+
+            function gibSkalar(v_spot, v_current) {
+                let res = 0;
+                for (let i = 0; i < 3; i++) {
+                    res += v_spot[i]*v_current[i]; 
+                }
+                return res;
+            }
+
+            function gibLaengen(v_spot, v_current) {
+                let l = Math.sqrt(v_spot[0]*v_spot[0]+v_spot[1]*v_spot[1]+v_spot[2]*v_spot[2]);
+                let k = Math.sqrt(v_current[0]*v_current[0]+v_current[1]*v_current[1]+v_current[2]*v_current[2]);
+                return l*k;        
+            }
+
+            
+
+            // Paint
+            function zeichne(andere_größe) {
+                updateValues(andere_größe)
+                if (andere_größe) {
+                    kreis()
+                }
+                schattiere()
+                printPixels()
+            }
+
+            function kreis() {
+                // Vereinfachung: nur ungerade zulassen
+                picture_raw = "";
+                row = ""; 
+                // Formel y = root(r²-x²)
+                // Herangehensweise: x-werte (Ränder) für jede Zeile -> y = root(...) -> Nach x auflösen wird zu x = root(r²-y²)
+                for (let i = 0; i <= (side-1)/2; i++) {
+                    let current_height = (side-1)/2 - i;
+                    if (current_height < r) { // sonst kommt kreis nicht an Zeile/Höhe
+                        let x = Math.round(Math.sqrt(r*r - current_height*current_height));
+                        
+                        // Alles füllen (aka wie muss die Reihe auf der Höhe aussehen
+                        row = ""; // Reset
+                        let von = (side-1)/2-x; // Index von der Mitte des Bildes +- x
+                        let bis = (side-1)/2+x;
+                        for (let a = 0; a < side; a++) {
+                            if (a >= von && a <= bis) {
+                                row += "1";
+                            } else {
+                                row += "0";
+                            }
+                        }   
+                        picture_raw += row;               
+                    }
+                    // wenn Kreis nicht rankommt 
+                    else {
+                        for (let t = 0; t<side; t++) {
+                            picture_raw += "0";
+                        }
+                    }
+                }
+
+                // Alles nach unten Spiegeln
+                let start_middle_row = side*((side-1)/2);
+                for (let j = 1; j <= (start_middle_row); j++) {
+                    
+                    picture_raw += picture_raw[start_middle_row-j];
+                } 
+            } 
+        
+
+            function schattiere() {
+                side_screen = side;
+                
+                // Make into list
+                let pic_array = [];
+        
+                // put numbers into the array 
+                for (let i = 0; i < picture_raw.length; i++) {    
+                    pic_array[i]  = picture_raw[i]; // -48 = Ascii wegbekommen 
+                }
+                
+                for (let zeile = 0; zeile < side_screen; zeile++) {
+                    for (let spalte = 0; spalte < side_screen; spalte++) {
+                        if (pic_array[zeile*side_screen + spalte] != 0) {
+                            let vh =0;
+                            let lr = -((side_screen-1)/2) +spalte;
+                            let ou = ((side_screen-1)/2 -zeile);
+
+                            // Vorne-hinten vektor
+                            let r_an_zeile = Math.round(Math.sqrt(r*r - ou*ou));
+                            
+                            vh = Math.round(Math.sqrt(r_an_zeile*r_an_zeile - lr*lr));
+                            let vec_to_point = [vh,lr,ou]; // Schema 0: vorne, hinten, 1: y links, rechts, 2: oben unten
+
+                            // cos_winkel = (skalarprodukt(v*u))/(|u|*|v|)
+                            let skalar = gibSkalar(v_bright, vec_to_point);
+                            let laengen = gibLaengen(v_bright, vec_to_point);
+                            // Get Deg
+                            let deg = Math.round(Math.acos(skalar/laengen)/Math.PI*180); // Von Bogenmaß in Gradmaß (switch nimmt Grad)
+                            // In Nummer converten (34->20->1->2 bzw 158->140->7->8)
+                            // einer weg
+                            deg = deg - (deg % 20);
+                            deg /= 20;
+                            pic_array[side_screen*zeile+spalte] *= (deg+1); // überall wo angepasst werden soll steht 1 also 1 * deg = deg = Helligkeit 
+                        }  
+                    } 
+                }
+                picture_shaded = "";
+                // Convert Back to String
+                for (let a = 0; a<pic_array.length; a++) {
+                    picture_shaded += pic_array[a];
+                }
+            }
+
+            function printPixels() {
+                var id = "anzeige";
+                var text_space = document.getElementById(id);
+                let side_screen = side;
+                console.log(picture_shaded.length, " of ", side*side)
+
+                let content = "";
+                let current_row = "";
+                //check for right side_screen
+                for (let row = 0; row < side; row++) { 
+                    current_row = "";
+                    //Make the row
+                    for (let i = 0; i < side_screen; i++) {
+                        let thingtoadd="";
+                        switch (picture_shaded[i+row*side_screen]) {
+                            // ....----::::!!!!////@@$$##
+                            case '1': 
+                                thingtoadd = ".'";
+                                break;
+                            case '2': 
+                                thingtoadd = ";;";
+                                break;
+                            case '3': 
+                                thingtoadd = "!!";
+                                break;
+                            case '4': 
+                                thingtoadd = "//";
+                                break;
+                            case '5': 
+                                thingtoadd = "CC";
+                                break;
+                            case '6': 
+                                thingtoadd = "OO";
+                                break;
+                            case '7':
+                                thingtoadd = "$$";
+                                break;
+                            case '8':
+                                thingtoadd = "BB";
+                                break;
+                            case '9':
+                                thingtoadd = "##";
+                                break;
+                            default:
+                                thingtoadd = "&nbsp&nbsp";
+                        }
+                        current_row += thingtoadd;
+                    }
+                    content += current_row + "<br/>";
+                }
+                text_space.innerHTML = content;
+            }     
+
+        </script>
+
+        <style>
+            body {
+                font-family: Arial, Helvetica, sans-serif;
+            }
+            
+
+            div {
+                float:left;
+                height: 900px;
+                width: 300px;
+            }
+            
+            input[type="range"] {
+                width: 200px;
+                color: blueviolet;
+            }
+
+            #anzeige {
+                font-family: 'Courier New', Courier, monospace;
+                font-weight: bold;
+            }
+
+            .screen {
+                width: 900;
+                background-color: beige;
+            }
+            .regler {
+                height: 300px;
+                margin-left: 30px;
+                background-color: darkslategray;
+                border-radius: 30px;
+            }
+            .regler_regler {
+                height: 300px;
+                margin-left: 30px;
+                margin-top: 40px;
+            }
+
+        </style>
+    </head>
+    <body onload="zeichne(andere_größe=true)">
+        <h1> Schattierte Kugel von Roman Dall'Antonia</h1>
+        <main id="screen_regler">
+            <div class="screen">
+                <p id="anzeige">Juhu</p>
+            </div>
+            
+            <br/>
+            <br/><br/>
+
+            <div class="regler">
+            <div class="regler_regler">    
+
+                <p>Größe:</p>
+                <input id="side_slider" type="range" min="3" max="22" onchange="zeichne(andere_größe=true)"></input>
+                <span id="display_side"></span>
+                <br/>
+
+                <p>Horizontal verschieben:</p>
+                <input id="lr_slider" type="range" min="-180" max="180" onchange="zeichne(andere_größe=false)"/>
+                <span id="display_lr"></span>
+                <br/>
+
+                <p>Vertikal verschieben:</p>
+                <input id="ou_slider" type="range" min="-180" max="180" onchange="zeichne(andere_größe=false)"/>
+                <span id="display_ou"></span>
+            </div>
+            </div>
+        </main>
+    </body>
+</html>
